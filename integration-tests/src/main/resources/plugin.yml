@@ -1,0 +1,11 @@
+name: PrismFAWEIntegrationTests
+version: '1.0'
+main: com.thewadesmith.prismfawe.test.LiveChecks
+api-version: '1.21.4'
+depend: [PrismFAWEBridge, prism, FastAsyncWorldEdit, NBTAPI]
+commands:
+  bridgecheck:
+    permission: bridgecheck.run
+permissions:
+  bridgecheck.run:
+    default: op

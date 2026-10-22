@@ -1,0 +1,17 @@
+PASS FAWE //set stored one database row with negative coordinates
+PASS Prism rollback restores original stone
+PASS Prism restore reapplies diamond block
+PASS No-op //set adds no duplicate record
+PASS FAWE //replace is logged
+PASS FAWE //undo is logged
+PASS FAWE //redo is logged
+PASS Cut chest rollback restores its three diamonds
+PASS Cut chest restore removes the chest again
+PASS FAWE //paste restores clipboard chest contents
+PASS Prism rolls back the pasted chest
+PASS Prism restores the pasted chest and contents
+PASS Same-type chest rollback removes added name and restores inventory
+PASS Same-type chest restore restores name and new contents
+PASS Same-state sign rollback preserves original, numeric, boolean-like and empty text
+PASS Same-state sign restore preserves changed, numeric, boolean-like and empty text
+PASS Bridge remained enabled

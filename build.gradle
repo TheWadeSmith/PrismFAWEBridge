@@ -3,7 +3,7 @@ plugins {
 }
 
 group = 'com.thewadesmith'
-version = '1.0.0'
+version = '1.0.1'
 
 repositories {
     mavenCentral()
@@ -36,6 +36,7 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter:5.12.2'
     testImplementation 'org.mockito:mockito-core:5.20.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.12.2'
+    testRuntimeOnly 'com.mojang:authlib:6.0.54'
 }
 
 configurations.testImplementation.extendsFrom(configurations.compileOnly)
@@ -45,4 +46,20 @@ test { useJUnitPlatform() }
 processResources {
     inputs.property 'version', project.version
     filesMatching('plugin.yml') { expand version: project.version }
+}
+
+sourceSets {
+    integrationHarness {
+        java.srcDir 'integration-tests/src/main/java'
+        resources.srcDir 'integration-tests/src/main/resources'
+    }
+}
+configurations.integrationHarnessCompileOnly.extendsFrom(configurations.compileOnly)
+dependencies {
+    integrationHarnessCompileOnly('com.fastasyncworldedit:FastAsyncWorldEdit-Bukkit:2.16.1') { transitive = false }
+}
+tasks.register('integrationHarnessJar', Jar) {
+    dependsOn integrationHarnessClasses
+    archiveClassifier = 'integration-harness'
+    from sourceSets.integrationHarness.output
 }

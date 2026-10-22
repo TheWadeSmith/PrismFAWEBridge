@@ -115,7 +115,17 @@ class BatchChangeProcessorTest {
         when(original.tile(2, 64, 3)).thenReturn(oldNbt);
         when(set.tile(2, 64, 3)).thenReturn(newNbt);
 
-        processor.processSet(chunk, original, set);
+        // Native NBT serialization needs a running server; the live harness covers
+        // that boundary. This test isolates queue publication and preimage capture.
+        try (var nbt = mockStatic(de.tr7zw.nbtapi.NBT.class)) {
+            var oldNative = mock(de.tr7zw.nbtapi.iface.ReadWriteNBT.class);
+            var newNative = mock(de.tr7zw.nbtapi.iface.ReadWriteNBT.class);
+            when(oldNative.toString()).thenReturn("{CustomName:'old chest'}");
+            when(newNative.toString()).thenReturn("{CustomName:'new chest'}");
+            nbt.when(() -> de.tr7zw.nbtapi.NBT.readNBT(org.mockito.ArgumentMatchers.any(java.io.InputStream.class)))
+                    .thenReturn(oldNative, newNative);
+            processor.processSet(chunk, original, set);
+        }
         assertEquals(0, pending.size());
         processor.postProcess(chunk, postCopy, set);
 

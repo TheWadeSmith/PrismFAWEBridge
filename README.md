@@ -7,7 +7,7 @@ Built against **Prism 4.4**, **FAWE 2.16.1**, and Paper's 1.21.11 API. **Java 25
 ## Install
 
 1. Install Prism 4.4+, FAWE, and NBT-API normally on a Paper server.
-2. Put `PrismFAWEBridge-1.0.0.jar` in `plugins/` and restart the server.
+2. Put `PrismFAWEBridge-1.0.1.jar` in `plugins/` and restart the server. Remove any older bridge JAR first.
 3. Keep Prism's own `actions.worldedit-break` and `actions.worldedit-place` **false** (their defaults). This bridge records its own `fawe-change` action; leaving the old hook enabled can cause warnings or duplicate recording.
 4. Run `/prismfawe` as an operator to check the bridge counters.
 
@@ -23,6 +23,8 @@ Use the normal Prism inspection tools, or search the bridge action type:
 /pr lookup a:fawe-change p:YourName since:5m r:16
 ```
 
+From the server console, supply a reference location explicitly, for example `pr lookup a:fawe-change world:YourWorld at:0,80,0 r:16 since:5m`.
+
 Each changed position is **one record**, containing complete before/after snapshots. The bridge's public modification handler restores the selected snapshot through Prism's native block actions, including available chest contents and sign text. This avoids relying on the order of a separate break/place pair.
 
 ```text
@@ -34,7 +36,7 @@ Always narrow the player/time/radius to the intended edit. Review Prism's result
 
 ## Coverage and limits
 
-- Captures committed **queued block changes** from FAWE, including the batch path used by normal `//set`, `//replace`, `//paste`, `//cut`, `//undo`, and `//redo` operations. These commands still need in-server acceptance testing; automated checks cover the processor/API contracts rather than every command.
+- Captures committed **queued block changes** from FAWE. Live console-command checks passed for `//set`, `//replace`, `//paste`, `//cut`, `//undo`, and `//redo` on Paper 26.3 with stock Prism 4.4 and FAWE 2.16.1. This is a small disposable-world test, not coverage of every command option or large edits.
 - Preserves coordinates, block properties, player UUID/name or non-player cause, capture time, and available block-entity NBT. NBT-only tile writes are included.
 - **Does not record entities, biome-only changes, direct NMS writes, regeneration outside FAWE's queue, or WNA/direct-world mode.** Non-queued edit sessions produce a warning and a status counter, rather than changing how FAWE edits the world.
 - Prism's filters still apply. Its default `ignore-creative=false` is suitable for builders; enabling it can suppress creative-player records.
@@ -55,6 +57,6 @@ Install JDK 25, then run:
 ./gradlew clean build
 ```
 
-Output: `build/libs/PrismFAWEBridge-1.0.0.jar`. Dependencies are compile-only and are not bundled; the server supplies Prism, FAWE, Paper, and NBT-API.
+Output: `build/libs/PrismFAWEBridge-1.0.1.jar`. Dependencies are compile-only and are not bundled; the server supplies Prism, FAWE, Paper, and NBT-API.
 
-Automated checks cover native processor chaining, no pre-commit logging, negative coordinates, no-op/reserved entries, tile-only preimage capture, bounded queue overflow, late shutdown callbacks, atomic replacement serialization, complete before/after NBT delegation, actor attribution, and Prism queue acceptance. No live Paper server or player has been used to certify this build. Before production, test a small set/replace/cut/paste/undo/redo, a chest containing items, and a sign; verify Prism lookup, rollback, restore, and client visibility without relogging.
+All 16 unit tests and 17 live server checks passed. Live checks verify database-backed Prism lookup, rollback and restore, chest contents and names, and sign text including blank and numeric lines. Version 1.0.1 fixes a sign rollback failure found by those checks by using Minecraft's native NBT writer for tile snapshots. See [VALIDATION.md](VALIDATION.md) and [the test harness](integration-tests/README.md) for exact coverage and reproduction steps. Player UUID attribution is covered by unit tests; actual player sessions, client visibility without relogging, and large-edit performance remain untested.

@@ -12,8 +12,10 @@ jobs:
           distribution: temurin
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v4
-      - run: bash gradlew clean build
+      - run: bash gradlew clean build integrationHarnessJar
       - uses: actions/upload-artifact@v4
         with:
           name: PrismFAWEBridge
-          path: build/libs/*.jar
+          path: |
+            build/libs/*.jar
+            !build/libs/*-integration-harness.jar
