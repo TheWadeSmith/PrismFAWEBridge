@@ -1,0 +1,15 @@
+name: PrismFAWEBridge
+version: '${version}'
+main: com.thewadesmith.prismfawe.PrismFaweBridge
+api-version: '1.21.4'
+description: Records FAWE block changes through the public Prism API.
+author: TheWadeSmith
+depend: [prism, FastAsyncWorldEdit, NBTAPI]
+commands:
+  prismfawe:
+    description: Show bridge recording status.
+    permission: prismfawe.admin
+    usage: /prismfawe
+permissions:
+  prismfawe.admin:
+    default: op

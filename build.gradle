@@ -1,0 +1,48 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.thewadesmith'
+version = '1.0.0'
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+    exclusiveContent {
+        forRepository { maven { url = 'https://nexus.prism-mc.org/repository/maven-releases/' } }
+        filter { includeGroup 'org.prism_mc.prism' }
+    }
+    exclusiveContent {
+        forRepository { maven { url = 'https://repo.codemc.org/repository/maven-public/' } }
+        filter { includeGroup 'de.tr7zw' }
+    }
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(25) }
+    withSourcesJar()
+}
+
+dependencies {
+    compileOnly 'io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT'
+    compileOnly('com.fastasyncworldedit:FastAsyncWorldEdit-Core:2.16.1') {
+        // Parser/noise libraries are not needed by the queue API. FAWE supplies them at runtime.
+        exclude group: 'com.sk89q', module: 'jchronic'
+        exclude group: 'com.sk89q.lib', module: 'jlibnoise'
+    }
+    compileOnly 'org.prism_mc.prism:prism-paper-api:4.4'
+    compileOnly 'de.tr7zw:item-nbt-api-plugin:2.15.2-SNAPSHOT'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.12.2'
+    testImplementation 'org.mockito:mockito-core:5.20.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.12.2'
+}
+
+configurations.testImplementation.extendsFrom(configurations.compileOnly)
+
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+test { useJUnitPlatform() }
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('plugin.yml') { expand version: project.version }
+}

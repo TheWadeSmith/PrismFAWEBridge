@@ -1,0 +1,4 @@
+# Maximum snapshots waiting to be sent to Prism. Overflow is reported loudly.
+max-pending-changes: 100000
+# Conversion and Prism API calls run on the Paper main thread in bounded batches.
+changes-per-tick: 1000
