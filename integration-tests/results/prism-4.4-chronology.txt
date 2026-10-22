@@ -1,0 +1,69 @@
+Prism 4.4 chronology regression - October 22, 2026
+
+Disposable localhost server; FAWE writes are real. The later block-break row is a controlled SQLite fixture paired with a real setblock air. No player client connected.
+Eight database tests: original production code 8 failures; patched code 8 passes. Checkstyle main/test: zero errors. Full test/shadowJar build successful.
+
+STOCK PRISM - air -> FAWE stone -> later break -> rollback both
+At 16:35:10 Prism applied 1 change and skipped 1. At 16:35:18 the air check failed and the stone check passed.
+[16:35:10] [Server thread/INFO]: (！) Prism 》Querying activities...
+[16:35:11] [Server thread/INFO]: (！) Prism 》Modifications applied successfully!
+[16:35:11] [Server thread/INFO]: 》 Applied 1 changes.
+[16:35:11] [Server thread/INFO]: 》 Partially Applied 0.
+[16:35:11] [Server thread/INFO]: 》 Skipped 1.
+[16:35:18] [Server thread/INFO]: System chat: Test failed
+[16:35:18] [Server thread/INFO]: System chat: Test passed
+
+PATCHED PRISM - same overlap at a fresh position (1,120,0)
+Command: pr rb world:global-check-world at:1,120,0 r:1 since:5m --nodefaults
+Then pr restore with the same filters. Both final states must be air.
+[16:47:16] [Server thread/INFO]: (！) Prism 》Querying activities...
+[16:47:16] [Server thread/INFO]: (！) Prism 》Modifications applied successfully!
+[16:47:16] [Server thread/INFO]: 》 Applied 2 changes.
+[16:47:16] [Server thread/INFO]: 》 Partially Applied 0.
+[16:47:16] [Server thread/INFO]: 》 Skipped 0.
+[16:47:23] [Server thread/INFO]: System chat: Test passed
+[16:47:23] [Server thread/INFO]: (！) Prism 》Querying activities...
+[16:47:23] [Server thread/INFO]: (！) Prism 》Modifications applied successfully!
+[16:47:23] [Server thread/INFO]: 》 Applied 2 changes.
+[16:47:23] [Server thread/INFO]: 》 Partially Applied 0.
+[16:47:23] [Server thread/INFO]: 》 Skipped 0.
+[16:47:26] [Server thread/INFO]: System chat: Test passed
+[16:47:26] [AsyncNotifyKeyedQueue - 0/INFO]: First position set to (-48, 80, -48) (100450).
+[16:47:26] [AsyncNotifyKeyedQueue - 0/INFO]: Second position set to (15, 83, 15) (16384).
+[16:47:26] [AsyncNotifyKeyedQueue - 0/INFO]: Operation completed (16384).
+
+PATCHED PRISM - 16,384-block persisted FAWE edit
+FAWE //set diamond_block at -48,80,-48 through 15,83,15. Initial narrow-radius rollback selected only part of the region; a full-world rollback finished it.
+Full restore: pr restore a:fawe-change b:diamond_block world:global-check-world since:5m --nodefaults
+Full rollback: pr rb with the same filters. Whole-region comparison: execute if blocks -48 80 -48 15 83 15 -48 100 112 all
+[16:48:52] [Server thread/INFO]: 》 95% complete (15565 / 16384)
+[16:48:52] [Server thread/INFO]: (！) Prism 》Modifications applied successfully!
+[16:48:52] [Server thread/INFO]: 》 Applied 16384 changes.
+[16:48:52] [Server thread/INFO]: 》 Partially Applied 0.
+[16:48:52] [Server thread/INFO]: 》 Skipped 0.
+[16:49:02] [Server thread/INFO]: System chat: Test passed
+[16:49:07] [Server thread/INFO]: 》 95% complete (15565 / 16384)
+[16:49:07] [Server thread/INFO]: (！) Prism 》Modifications applied successfully!
+[16:49:07] [Server thread/INFO]: 》 Applied 16384 changes.
+[16:49:07] [Server thread/INFO]: 》 Partially Applied 0.
+[16:49:07] [Server thread/INFO]: 》 Skipped 0.
+[16:49:11] [Server thread/INFO]: System chat: Test passed. Count: 16384
+[16:49:11] [AsyncNotifyKeyedQueue - 2/INFO]: Operation completed (3).
+
+PATCHED PRISM - stone support with two weeping-vine blocks
+Real FAWE //set air at 20,130,0 through 20,132,0. Rollback restored all three exact block types, then restore removed all three.
+[16:49:26] [Server thread/INFO]: (！) Prism 》Modifications applied successfully!
+[16:49:26] [Server thread/INFO]: 》 Applied 3 changes.
+[16:49:26] [Server thread/INFO]: 》 Partially Applied 0.
+[16:49:26] [Server thread/INFO]: 》 Skipped 0.
+[16:49:59] [Server thread/INFO]: System chat: Test passed
+[16:49:59] [Server thread/INFO]: System chat: Test passed
+[16:49:59] [Server thread/INFO]: System chat: Test passed
+[16:49:59] [Server thread/INFO]: (！) Prism 》Modifications applied successfully!
+[16:49:59] [Server thread/INFO]: 》 Applied 3 changes.
+[16:49:59] [Server thread/INFO]: 》 Partially Applied 0.
+[16:49:59] [Server thread/INFO]: 》 Skipped 0.
+[16:50:19] [Server thread/INFO]: System chat: Test passed
+[16:50:19] [Server thread/INFO]: System chat: Test passed
+[16:50:19] [Server thread/INFO]: System chat: Test passed
+[16:50:19] [Server thread/INFO]: Prism FAWE: pending=0, accepted activities=16388, not accepted=0, overflow=0, errors=0, non-queued sessions=0

@@ -4,6 +4,8 @@ An extra Paper plugin that records FastAsyncWorldEdit block changes in **stock P
 
 Built against **Prism 4.4**, **FAWE 2.16.1**, and Paper's 1.21.11 API. **Java 25 is required by current FAWE.** Uses Prism's published Paper API service and FAWE's public batch processor API, with no reflection or imports from Prism's implementation. This reduces update coupling, but future breaking API changes can still require a bridge update.
 
+**Overlapping rollback fix:** Stock Prism 4.4 has a query-ordering bug when a rollback selects multiple changes at the same position, including a FAWE edit followed by a normal block break. It can leave blocks behind. The bridge still works as a separate plugin, but correcting that Prism bug requires the optional [patched Prism JAR and source patch](patches/prism-4.4/README.md). Keep the bridge installed alongside it. This is a custom Prism build, not an official upstream release.
+
 ## Install
 
 1. Install Prism 4.4+, FAWE, and NBT-API normally on a Paper server.
@@ -31,6 +33,8 @@ Each changed position is **one record**, containing complete before/after snapsh
 /pr rollback a:fawe-change p:YourName since:5m r:16
 /pr restore a:fawe-change p:YourName since:5m r:16
 ```
+
+To undo both WorldEdit changes and later normal breaks, select both action types by omitting `a:fawe-change`. For example, `/pr rb p:YourName since:1h in:world` selects that player's history across the current world; Prism otherwise defaults to a local radius. Use the patched Prism build above for overlapping history. A rollback that includes both actions should leave each position as it was before the selected WorldEdit, without leftover blocks restored by the later break.
 
 Always narrow the player/time/radius to the intended edit. Review Prism's results before using rollback or restore in a real world. The bridge cannot recover edits made before it was installed.
 

@@ -1,0 +1,263 @@
+diff --git a/prism-core/build.gradle b/prism-core/build.gradle
+index 490d765..3e6f371 100644
+--- a/prism-core/build.gradle
++++ b/prism-core/build.gradle
+@@ -17,4 +17,12 @@ dependencies {
+     compileOnly project.property('deps.postgres')
+     compileOnly project(':prism-api')
+     compileOnly project(':prism-loader')
++
++    testImplementation 'org.junit.jupiter:junit-jupiter:5.12.2'
++    testImplementation project.property('deps.configurate-hocon')
++    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.12.2'
++    testRuntimeOnly 'org.xerial:sqlite-jdbc:3.49.1.0'
+ }
++
++configurations.testImplementation.extendsFrom(configurations.compileOnly)
++test { useJUnitPlatform() }
+diff --git a/prism-core/src/main/java/org/prism_mc/prism/core/storage/adapters/sql/SqlActivityQueryBuilder.java b/prism-core/src/main/java/org/prism_mc/prism/core/storage/adapters/sql/SqlActivityQueryBuilder.java
+index 646f01f..e2c2c72 100644
+--- a/prism-core/src/main/java/org/prism_mc/prism/core/storage/adapters/sql/SqlActivityQueryBuilder.java
++++ b/prism-core/src/main/java/org/prism_mc/prism/core/storage/adapters/sql/SqlActivityQueryBuilder.java
+@@ -232,17 +232,7 @@ public class SqlActivityQueryBuilder {
+                 queryBuilder.addOrderBy(avg(PRISM_ACTIVITIES.TIMESTAMP).desc());
+             }
+         } else {
+-            if (query.sort().equals(ActivityQuery.Sort.ASCENDING)) {
+-                queryBuilder.addOrderBy(PRISM_ACTIVITIES.TIMESTAMP.asc());
+-                queryBuilder.addOrderBy(PRISM_ACTIVITIES.ACTIVITY_ID.asc());
+-            } else {
+-                queryBuilder.addOrderBy(PRISM_ACTIVITIES.TIMESTAMP.desc());
+-                queryBuilder.addOrderBy(PRISM_ACTIVITIES.ACTIVITY_ID.desc());
+-            }
+-        }
+-
+-        if (query.modification()) {
+-            addModificationOrdering(queryBuilder);
++            addChronologicalOrdering(queryBuilder, query);
+         }
+ 
+         // Limits
+@@ -254,36 +244,17 @@ public class SqlActivityQueryBuilder {
+     }
+ 
+     /**
+-     * Apply the rollback/restore-specific ordering: hanging blocks last, then
+-     * build columns x/z ascending with a per-block y direction depending on
+-     * whether the block needs to build up or down. Shared between full-record
+-     * and PK-only queries so a streaming source produces the same order as
+-     * the legacy materialized query.
++     * Use the same total history order when selecting keys and fetching their
++     * records. Rollback reverses history; restore replays it. Material or spatial
++     * priorities must not move an older edit after a newer edit at one position.
++     * The primary key breaks ties between events recorded in the same second.
+      */
+-    private void addModificationOrdering(SelectQuery<Record> queryBuilder) {
+-        // Most rollbacks "build up" but some hanging blocks need to be "built down" or they just break.
+-        // In order to do this, we tell hanging blocks to sort *after* everything else,
+-        // then we sort everything by `y asc` and sort these hanging blocks by `y desc`.
+-        // cave_vines are sorted to come after cave_vines_plant so the plant is rebuilt first.
+-        queryBuilder.addOrderBy(
+-            DSL.decode().when(PRISM_BLOCKS.NAME.in("cave_vines", "weeping_vines"), 1).else_(-1).asc()
+-        );
+-
+-        queryBuilder.addOrderBy(
+-            DSL.decode().when(PRISM_BLOCKS.NAME.in("cave_vines_plant", "weeping_vines_plant"), 1).else_(-1).asc()
+-        );
+-
+-        queryBuilder.addOrderBy(
+-            DSL.decode().when(PRISM_BLOCKS.NAME.in("vine", "pointed_dripstone"), 1).else_(-1).asc()
+-        );
+-
+-        queryBuilder.addOrderBy(PRISM_ACTIVITIES.X.asc());
+-        queryBuilder.addOrderBy(PRISM_ACTIVITIES.Z.asc());
+-
+-        List<String> blocksToBuildUp = List.of("pointed_dripstone", "cave_vines_plant", "weeping_vines_plant", "vine");
+-
+-        queryBuilder.addOrderBy(DSL.decode().when(PRISM_BLOCKS.NAME.in(blocksToBuildUp), PRISM_ACTIVITIES.Y).desc());
+-        queryBuilder.addOrderBy(DSL.decode().when(PRISM_BLOCKS.NAME.notIn(blocksToBuildUp), PRISM_ACTIVITIES.Y).asc());
++    private void addChronologicalOrdering(SelectQuery<Record> queryBuilder, ActivityQuery query) {
++        if (query.sort().equals(ActivityQuery.Sort.ASCENDING)) {
++            queryBuilder.addOrderBy(PRISM_ACTIVITIES.TIMESTAMP.asc(), PRISM_ACTIVITIES.ACTIVITY_ID.asc());
++        } else {
++            queryBuilder.addOrderBy(PRISM_ACTIVITIES.TIMESTAMP.desc(), PRISM_ACTIVITIES.ACTIVITY_ID.desc());
++        }
+     }
+ 
+     /**
+@@ -309,15 +280,7 @@ public class SqlActivityQueryBuilder {
+ 
+         queryBuilder.addConditions(conditions(query));
+ 
+-        if (query.modification()) {
+-            addModificationOrdering(queryBuilder);
+-        } else if (query.sort().equals(ActivityQuery.Sort.ASCENDING)) {
+-            queryBuilder.addOrderBy(PRISM_ACTIVITIES.TIMESTAMP.asc());
+-            queryBuilder.addOrderBy(PRISM_ACTIVITIES.ACTIVITY_ID.asc());
+-        } else {
+-            queryBuilder.addOrderBy(PRISM_ACTIVITIES.TIMESTAMP.desc());
+-            queryBuilder.addOrderBy(PRISM_ACTIVITIES.ACTIVITY_ID.desc());
+-        }
++        addChronologicalOrdering(queryBuilder, query);
+ 
+         if (query.limit() > 0) {
+             queryBuilder.addLimit(query.offset(), query.limit());
+@@ -350,9 +313,7 @@ public class SqlActivityQueryBuilder {
+ 
+         queryBuilder.addConditions(PRISM_ACTIVITIES.ACTIVITY_ID.in(pkValues));
+ 
+-        if (query.modification()) {
+-            addModificationOrdering(queryBuilder);
+-        }
++        addChronologicalOrdering(queryBuilder, query);
+ 
+         return queryBuilder.fetch();
+     }
+diff --git a/prism-core/src/test/java/org/prism_mc/prism/core/storage/adapters/sql/ModificationOrderingTest.java b/prism-core/src/test/java/org/prism_mc/prism/core/storage/adapters/sql/ModificationOrderingTest.java
+new file mode 100644
+index 0000000..1cd833d
+--- /dev/null
++++ b/prism-core/src/test/java/org/prism_mc/prism/core/storage/adapters/sql/ModificationOrderingTest.java
+@@ -0,0 +1,142 @@
++/*
++ * prism
++ *
++ * Copyright (c) 2022 M Botsko (viveleroi)
++ *                    Contributors
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program. If not, see <https://www.gnu.org/licenses/>.
++ */
++
++package org.prism_mc.prism.core.storage.adapters.sql;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.prism_mc.prism.core.storage.adapters.sql.AbstractSqlStorageAdapter.PRISM_ACTIVITIES;
++import static org.prism_mc.prism.core.storage.adapters.sql.AbstractSqlStorageAdapter.PRISM_DATABASE;
++
++import java.nio.file.Path;
++import java.sql.Connection;
++import java.sql.DriverManager;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.logging.Logger;
++import org.jooq.DSLContext;
++import org.jooq.Record;
++import org.jooq.Result;
++import org.jooq.SQLDialect;
++import org.jooq.conf.Settings;
++import org.jooq.impl.DSL;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.io.TempDir;
++import org.prism_mc.prism.api.activities.ActivityQuery;
++import org.prism_mc.prism.loader.services.configuration.ConfigurationService;
++
++/** Exercises the real SQL used by both stages of a streamed modification. */
++class ModificationOrderingTest {
++
++    @TempDir
++    Path configurationDirectory;
++
++    private Connection connection;
++    private SqlActivityQueryBuilder queries;
++
++    @BeforeEach
++    void createHistory() throws Exception {
++        AbstractSqlStorageAdapter.initializeDataObjects("prism_", "", "");
++        connection = DriverManager.getConnection("jdbc:sqlite::memory:");
++        DSLContext database = DSL.using(connection, SQLDialect.SQLITE, new Settings().withRenderSchema(false));
++        for (var table : PRISM_DATABASE.getTables()) {
++            database.createTable(table).columns(table.fields()).execute();
++        }
++        database.execute("insert into prism_worlds(world_id, world, world_uuid) values (1, 'world', '00000000-0000-0000-0000-000000000001')");
++        database.execute("insert into prism_actions(action_id, action) values (1, 'fawe-change'), (2, 'block-break')");
++        database.execute("insert into prism_blocks(block_id, ns, name, data) values (1, 'minecraft', 'stone', ''), (2, 'minecraft', 'weeping_vines', '')");
++
++        // One coordinate changes between ordinary/hanging materials. The last
++        // record is a native break after the FAWE writes. IDs deliberately do
++        // not track time; two events share a second and need the ID tie-break.
++        database.execute("insert into prism_activities(activity_id, timestamp, world_id, x, y, z, action_id, affected_block_id, reversed) values "
++            + "(31, 100, 1, 0, 80, 0, 1, 1, 0),"
++            + "(41, 200, 1, 0, 80, 0, 1, 2, 0),"
++            + "(42, 200, 1, 0, 80, 0, 1, 1, 0),"
++            + "(11, 300, 1, 0, 80, 0, 2, 1, 0)");
++
++        var configuration = new ConfigurationService(configurationDirectory, Logger.getAnonymousLogger());
++        queries = new SqlActivityQueryBuilder(configuration, database);
++    }
++
++    @AfterEach
++    void closeDatabase() throws Exception {
++        if (connection != null) {
++            connection.close();
++        }
++    }
++
++    @Test
++    void rollbackReversesMixedHistoryNewestFirst() {
++        assertEquals(List.of(11L, 42L, 41L, 31L), queries.queryActivityPks(ActivityQuery.builder().rollback().build()));
++    }
++
++    @Test
++    void restoreReplaysMixedHistoryOldestFirst() {
++        assertEquals(List.of(31L, 41L, 42L, 11L), queries.queryActivityPks(ActivityQuery.builder().restore().build()));
++    }
++
++    @Test
++    void rollbackRefetchRetainsChronologyRegardlessOfInListOrder() {
++        var result = queries.queryActivitiesByPks(List.of(31L, 11L, 41L, 42L), ActivityQuery.builder().rollback().build());
++        assertEquals(List.of(11L, 42L, 41L, 31L), ids(result));
++    }
++
++    @Test
++    void restoreRefetchRetainsChronologyRegardlessOfInListOrder() {
++        var result = queries.queryActivitiesByPks(List.of(42L, 11L, 31L, 41L), ActivityQuery.builder().restore().build());
++        assertEquals(List.of(31L, 41L, 42L, 11L), ids(result));
++    }
++
++    @Test
++    void streamedRollbackMatchesMaterializedHistoryAcrossBatches() {
++        assertBatches(ActivityQuery.builder().rollback().build(), List.of(11L, 42L, 41L, 31L));
++    }
++
++    @Test
++    void streamedRestoreMatchesMaterializedHistoryAcrossBatches() {
++        assertBatches(ActivityQuery.builder().restore().build(), List.of(31L, 41L, 42L, 11L));
++    }
++
++    @Test
++    void rollbackLimitSelectsNewestEventsBeforeSpatialPriorities() {
++        assertEquals(List.of(11L, 42L), queries.queryActivityPks(ActivityQuery.builder().rollback().limit(2).build()));
++    }
++
++    @Test
++    void restoreLimitSelectsOldestEventsBeforeSpatialPriorities() {
++        assertEquals(List.of(31L, 41L), queries.queryActivityPks(ActivityQuery.builder().restore().limit(2).build()));
++    }
++
++    private void assertBatches(ActivityQuery query, List<Long> expected) {
++        var keys = queries.queryActivityPks(query);
++        var streamed = new ArrayList<Long>();
++        for (int start = 0; start < keys.size(); start += 2) {
++            streamed.addAll(ids(queries.queryActivitiesByPks(keys.subList(start, Math.min(start + 2, keys.size())), query)));
++        }
++        assertEquals(expected, streamed);
++        assertEquals(ids(queries.queryActivities(query)), streamed);
++    }
++
++    private List<Long> ids(Result<Record> rows) {
++        return rows.getValues(PRISM_ACTIVITIES.ACTIVITY_ID).stream().map(Number::longValue).toList();
++    }
++}
